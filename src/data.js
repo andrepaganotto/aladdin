@@ -5,6 +5,8 @@ import { Worker } from 'worker_threads';
 import { createCalcMap } from './utils.js';
 import calc from './calc.js';
 
+import start from './worker.js';
+
 const data = {};
 
 export default function (markets) {
@@ -16,8 +18,8 @@ export default function (markets) {
             future: Object.fromEntries(future.map(s => [s, new Float64Array(new SharedArrayBuffer(8))])),
         }
     }
-
-    const worker = new Worker('./src/worker.js', { workerData: data });
+    start(data);
+    // const worker = new Worker('./src/worker.js', { workerData: data });
 
     // setInterval(() => {
     //     for (const ex of ['Binance', 'Gate']) {
