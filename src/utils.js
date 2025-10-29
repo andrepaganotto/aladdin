@@ -9,6 +9,28 @@ export function findProperty(buffer, index, needle) {
 }
 
 /**
+ * Calculates the average price of a trade based on cash volume (price * volume) given a order book side (bids or asks).
+ * This function is used to know what price you will pay when executing a market order.
+ * @param {Array<[number, number]>} arr - Array of [price, volume] pairs, ordered best to worst.
+ * @param {number} vol - Total cash amount to be spent.
+ * @returns {[number, number, number]|undefined} - [avgPrice, lastPriceUsed, totalCashVol] or undefined if theres no enough cash volume on the provided book to fulfill the trade.
+ */
+export const avgPrice = (arr, vol) => {
+    let initVol = vol
+    let sum = 0;
+    let cashVol = 0;
+
+    for (const [price, volume] of arr) {
+        cashVol += price * volume
+        const diff = Math.min(price * volume, vol);
+        sum += diff / price;
+        if (!(vol -= diff)) return [initVol / sum, price, cashVol];
+    }
+
+    return undefined;
+};
+
+/**
  * Author: ChatGPT (GPT-5 Thinking)
  * 
  * Purpose:
