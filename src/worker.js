@@ -12,9 +12,9 @@ export default function (workerData) {
         future: Object.fromEntries(Object.entries(workerData[ex].future).map(([s, buf]) => [`${s}${prefix}`, buf]))
     });
 
-    Binance.start(setData('Binance', 'USDT'));
+    Binance.watchTickers(setData('Binance', 'USDT'));
 
-    Gate.start(setData('Gate', '_USDT'));
+    Gate.watchTickers(setData('Gate', '_USDT'));
 }
 
 //TODO > start the other exchanges

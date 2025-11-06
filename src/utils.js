@@ -1,3 +1,20 @@
+export function debounce(callback, delay = 15000) {
+    let timeout;
+    return function (...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(function () {
+            callback.apply(context, args);
+        }, delay);
+    }
+}
+
+export function find(buffer, start, stop, parse = false) {
+    // find buffer subarray (slice of the buffer array) at `start` (usually `index + needle.length`) until `stop`
+    stop = buffer.indexOf(stop, start);
+    return parse ? buffer.subarray(start, stop).toString('utf-8') : buffer.subarray(start, stop);
+}
+
 export function findProperty(buffer, index, needle) {
     //This function basically searchs for a json property ("property":"value) in a array of bytes (buffer)
     //It gets starting point of the buffer array (the equivalents bytes for the >"property":"< exactly this) and starting counting from there
@@ -15,7 +32,10 @@ export function findProperty(buffer, index, needle) {
  * @param {number} vol - Total cash amount to be spent.
  * @returns {[number, number, number]|undefined} - [avgPrice, lastPriceUsed, totalCashVol] or undefined if theres no enough cash volume on the provided book to fulfill the trade.
  */
-export const avgPrice = (arr, vol) => {
+export const avgPrice = (arr, sort = 'asc', vol) => {
+    if (sort === 'asc') arr = [...arr.entries()].sort(([a], [b]) => a - b);
+    if (sort === 'desc') arr = [...arr.entries()].sort(([a], [b]) => b - b);
+
     let initVol = vol
     let sum = 0;
     let cashVol = 0;

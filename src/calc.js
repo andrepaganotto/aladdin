@@ -1,12 +1,28 @@
-import { sync, book } from './book.js';
+import { keepAlive, book } from './book.js';
 import { avgPrice } from './utils.js';
 
 const avoidSymbols = ['TST'];
 
-const targetSpread = 2;
+const targetSpread = 1;
 const targetVolume = 500;
 
+/**
+ * This function basically do 2 things:
+ * - Uses the last price of the symbols to see if theres some opportunity happening, checking if the spread hits the target
+ * - If the spread does hit our target, it then subscribe to that symbol's orderbook, keeping a connection to its data stream alive every minute
+ * - If theres book data for that symbol on its spot and future exchange, the same loop calculates the available volume for that symbol
+ * - If theres enough volume for that symbol and it does hit our target spread, we add it to the list of profit and stream it to the user frontend
+ * 
+ * In other words:
+ * - Hey last price, tell me if there have been any probably profitable trade in the last moments
+ * - If there was any trade that opens a spread, start listening to the book data to see if theres volume so we can profit
+ * - If there is any enough volume to profit, tell the user so it can realize the profit
+ * 
+ * @param {*} entries 
+ * @param {*} data 
+ */
 export default function (entries, data) {
+    // console.clear();
     console.log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
 
     const buy = {};
@@ -29,26 +45,22 @@ export default function (entries, data) {
                     const spread = +Math.abs((agio - 1) * 100).toFixed(2);
 
                     if (spread >= targetSpread) {
-                        sync(exchangeA, 'spot', symbol);
-                        sync(exchangeB, 'future', symbol);
+                        keepAlive(exchangeA, 'spot', symbol);
+                        keepAlive(exchangeB, 'future', symbol);
                     }
                 }
 
-                //We perform this calculation here so we dont have to perform the triple nested for loop again        
+                //We perform this calculation here so we dont have to perform the triple nested for loop again       
                 const bookA = book.get(`${exchangeA}:spot:${symbol}`);
                 const bookB = book.get(`${exchangeB}:future:${symbol}`);
 
-                const pushTo = (map, val) => {
-                    (map[symbol] ??= []).push(val);
-                };
-
-                if (bookA && bookB) {
+                if (bookA?.bids?.size && bookA?.asks?.size && bookB?.bids?.size && bookB?.asks?.size) {
                     const { bids: spotBids, asks: spotAsks } = bookA;
                     const { bids: futureBids, asks: futureAsks } = bookB;
 
                     {
-                        const avgAskData = avgPrice(spotAsks, targetVolume);
-                        const avgBidData = avgPrice(futureBids, targetVolume);
+                        const avgAskData = avgPrice(spotAsks, 'asc', targetVolume);
+                        const avgBidData = avgPrice(futureBids, 'desc', targetVolume);
 
                         if (avgAskData && avgBidData) {
                             const [avgAsk, finalAskPrice, totalAskVolume] = avgAskData;
@@ -57,7 +69,7 @@ export default function (entries, data) {
                             const spread = +((1 - finalAskPrice / finalBidPrice) * 100).toFixed(2);
 
                             if (spread >= targetSpread)
-                                pushTo(buy, {
+                                (buy[symbol] ??= []).push({
                                     buy_spot_on: exchangeA,
                                     spotAsk: finalAskPrice,
                                     sell_future_on: exchangeB,
@@ -66,13 +78,12 @@ export default function (entries, data) {
                                     volume: Math.min(totalBidVolume, totalAskVolume),
                                     profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)}`
                                 });
-
                         }
                     }
 
                     {
-                        const avgAskData = avgPrice(spotBids, targetVolume);
-                        const avgBidData = avgPrice(futureAsks, targetVolume);
+                        const avgBidData = avgPrice(spotBids, 'desc', targetVolume);
+                        const avgAskData = avgPrice(futureAsks, 'asc', targetVolume);
 
                         if (avgAskData && avgBidData) {
                             const [avgAsk, finalAskPrice, totalAskVolume] = avgAskData;
@@ -81,7 +92,7 @@ export default function (entries, data) {
                             const spread = +((1 - finalAskPrice / finalBidPrice) * 100).toFixed(2);
 
                             if (spread >= targetSpread)
-                                pushTo(sell, {
+                                (sell[symbol] ??= []).push({
                                     sell_spot_on: exchangeA,
                                     spotBid: finalBidPrice,
                                     buy_future_on: exchangeB,
@@ -90,10 +101,8 @@ export default function (entries, data) {
                                     volume: Math.min(totalBidVolume, totalAskVolume),
                                     profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)}`
                                 });
-
                         }
                     }
-
                 }
             }
         }

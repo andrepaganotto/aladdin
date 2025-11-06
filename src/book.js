@@ -1,71 +1,39 @@
-import ccxt from 'ccxt';
+import { debounce } from "./utils.js";
 
-const exchanges = {
-    Binance: {
-        spot: new ccxt.pro.binance(),
-        future: new ccxt.pro.binanceusdm()
-    },
-    Gate: {
-        spot: new ccxt.pro.gate(),
-        future: new ccxt.pro.gate()
-    }
-};
+import Gate from "./exchanges/Gate.js";
+import Binance from "./exchanges/Binance.js";
+
+const exchanges = { Gate, Binance };
 
 const STREAM_TIMER = 60000;
-
-const streams = new Map(); // Exchange:market:symbol -> { alive:boolean, seen:number }
+const streams = new Map(); // Exchange:market:symbol -> debounce();
 export const book = new Map(); // Exchange:market:symbol -> { asks, bids }
 
-let stamp = 0;
+export function keepAlive(exchange, market, symbol) {
+    const streamID = `${exchange}:${market}:${symbol}`;
 
-async function watch(exchange, market, symbol, stream) {
-    const symbolID = `${symbol}/${market === 'spot' ? 'USDT' : 'USDT:USDT'}`;
+    let stream = streams.get(streamID);
 
-    while (stream.alive) {
-        try {
-            const { bids, asks } = await exchanges[exchange][market].watchOrderBook(symbolID, 100);
-            if (!stream.alive) break;
+    if (stream) if (!stream.closing) return stream.keepAlive();
 
-            book.set(`${exchange}:${market}:${symbol}`, { bids, asks });
-        }
-        catch (err) {
-            console.error(`${symbol} error`, err)
-            break;
-        }
-    }
+    book.set(streamID, {
+        bids: new Map(),
+        asks: new Map()
+    });
 
-    if (stream.closing) exchanges[exchange][market].unWatchOrderBook(symbolID);
-}
+    exchanges[exchange].watchOrderBook(symbol, market, book.get(streamID));
 
-export function sync(exchange, market, symbol) {
-    const s = ++stamp;
+    stream = {
+        closing: false,
+        keepAlive: debounce(() => {
+            stream.closing = true;
+            exchanges[exchange].unWatchOrderBook(streamID);
+            book.delete(streamID);
+            streams.delete(streamID);
+        }, STREAM_TIMER)
+    };
 
-    const key = `${exchange}:${market}:${symbol}`;
+    stream.keepAlive();
 
-    let stream = streams.get(key);
-
-    if (!stream) {
-        stream = { alive: true, seen: s, timer: null, closing: false };
-        streams.set(key, stream);
-        watch(exchange, market, symbol, stream);
-    }
-    else {
-        stream.seen = s;
-        stream.closing = false;
-        if (stream.timer) {
-            clearTimeout(stream.timer);
-            stream.timer = null;
-        }
-    }
-
-    for (const [key, stream] of streams) {
-        if (stream.seen !== s && !stream.timer) {
-            stream.timer = setTimeout(() => {
-                stream.closing = true;
-                stream.alive = false;
-                streams.delete(key);
-                book.delete(key);
-            }, STREAM_TIMER);
-        }
-    }
+    streams.set(streamID, stream);
 }

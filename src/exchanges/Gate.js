@@ -22,6 +22,9 @@ async function getSymbols() {
 
 */
 
+const force = 1000;
+const streams = new Map();
+
 const spotWsUrl = 'wss://api.gateio.ws/ws/v4/';
 const futureWsUrl = 'wss://fx-ws.gateio.ws/v4/ws/usdt';
 
@@ -29,7 +32,7 @@ const priceNeedle = Buffer.from('"price":"');
 const symbolNeedleSpot = Buffer.from('"currency_pair":"');
 const symbolNeedlefuture = Buffer.from('"contract":"');
 
-function start(prices) {
+function watchTickers(prices) {
     const spotSymbols = Object.keys(prices.spot);
     const futureSymbols = Object.keys(prices.future);
 
@@ -74,7 +77,7 @@ function start(prices) {
             });
         });
 
-        ws.on('error', err => console.error(`Gate (${market}) WS error`, err));
+        ws.on('error', err => console.error(`Gate (${market}) WS error`, JSON.parse(err.toString('utf-8'))));
 
         ws.once('close', (code, reason) => {
             console.error(`Gate (${market}) WS closed`, code, reason);
@@ -85,6 +88,7 @@ function start(prices) {
     connect(spotWsUrl);
     connect(futureWsUrl, 'future');
 
+    // Used to see the amount of symbols on the connection that has already received at least some data
     // setInterval(() => {
     //     // console.log(prices)
     //     console.log('GATE');
@@ -93,7 +97,94 @@ function start(prices) {
     // }, 1000);
 }
 
-export default { getSymbols, start };
+/**
+ * Establishes and maintains a live WebSocket connection to receive real-time order book updates for a given trading pair.
+ * DESCRIPTION MADE BY GPT-5
+ *
+ * @param {string} symbol - Trading symbol (e.g., "BTC", "ETH").
+ * @param {string} market - Market type, either "spot" or "future", used to determine which API endpoint to connect to.
+ * @param {Object} book - Object that stores the current state of the order book.
+ * @param {Map<number, number>} book.bids - Map of bid prices to volumes.
+ * @param {Map<number, number>} book.asks - Map of ask prices to volumes.
+ * @param {number} book.depthID - Last processed update ID used for synchronization.
+ *
+ * Behavior:
+ * - Subscribes to the order book WebSocket channel for the specified symbol.
+ * - Handles incremental and full updates to maintain the local order book state.
+ * - Clears and rebuilds data on full snapshots.
+ * - Validates update sequencing; logs a warning if data is out of sync.
+ * - Reconnects automatically on connection loss.
+ */
+function watchOrderBook(symbol, market, book) {
+    const streamID = `Gate:${market}:${symbol}`;
+    const isSpot = market === 'spot';
+    book.depthID = 0;
+
+    if (streams.get(streamID)) return streamID;
+
+    function connect() {
+        const ws = new WebSocket(isSpot ? spotWsUrl : futureWsUrl);
+
+        streams.set(streamID, ws);
+
+        ws.on('open', () => {
+            ws.send(JSON.stringify({
+                time: Date.now(),
+                channel: `${isSpot ? 'spot' : 'futures'}.obu`,
+                event: 'subscribe',
+                payload: [`ob.${symbol}_USDT.50`]
+            }))
+        });
+
+        ws.on('message', buffer => {
+            const data = JSON.parse(buffer).result;
+
+            if (!data?.u) return;
+
+            if (data.full) {
+                book.bids.clear();
+                book.asks.clear();
+            }
+            else if (book.depthID + 1 !== data.U) ws.close(1001, 'OUT OF SYNC');
+
+            book.depthID = data.u;
+
+            if (data.a?.length)
+                for (const [price, volume] of data.a)
+                    if (!+volume) book.asks.delete(+price);
+                    else book.asks.set(+price, +volume);
+
+            if (data.b?.length)
+                for (const [price, volume] of data.b)
+                    if (!+volume) book.bids.delete(+price);
+                    else book.bids.set(+price, +volume);
+        });
+
+        ws.on('close', (code, reason) => {
+            if (code !== force) { //force close by code logic
+                console.error(streamID, 'CLOSED', Buffer.isBuffer(reason) ? JSON.parse(reason) : reason);
+                setTimeout(connect, 5000);
+            }
+        });
+
+        ws.on('error', err => console.error(streamID, 'ERROR', err));
+    }
+
+    connect();
+
+    return streamID;
+}
+
+function unWatchOrderBook(streamID) {
+    const stream = streams.get(streamID);
+
+    if (!stream) return;
+
+    stream.close(force);
+    streams.delete(streamID);
+}
+
+export default { getSymbols, watchTickers, watchOrderBook, unWatchOrderBook };
 
 //IMPORTANT: When we first connect to data streams we have no data snapshot, what means we have no data at all at first, and we need it o arrive
 //but the thing is, that it doenst arrive all at once, the server will only send any update when something happen (in our case, a new trade), so sometimes
