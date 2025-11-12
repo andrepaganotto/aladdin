@@ -2,7 +2,7 @@
 
 // import { parentPort, workerData } from 'worker_threads';
 
-import Binance from './exchanges/Binance.js';
+// import Binance from './exchanges/Binance.js';
 import Gate from './exchanges/Gate.js';
 
 
@@ -12,7 +12,7 @@ export default function (workerData) {
         future: Object.fromEntries(Object.entries(workerData[ex].future).map(([s, buf]) => [`${s}${prefix}`, buf]))
     });
 
-    Binance.watchTickers(setData('Binance', 'USDT'));
+    // Binance.watchTickers(setData('Binance', 'USDT'));
 
     Gate.watchTickers(setData('Gate', '_USDT'));
 }

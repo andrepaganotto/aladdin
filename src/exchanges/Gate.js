@@ -5,13 +5,36 @@ import { findProperty } from '../utils.js';
 const spotRestUrl = 'https://api.gateio.ws/api/v4/spot/currency_pairs';
 const futureRestUrl = 'https://api.gateio.ws/api/v4/futures/usdt/contracts';
 
-async function getSymbols() {
-    try {
+const symbols = {};
 
+async function fetchSymbols(refresh = false) {
+    if (!refresh && Object.keys(symbols).length) return symbols;
+
+    try {
+        const req = await axios.get(spotRestUrl);
+        const list = req.data;
+        if (!list || !list.length) throw new Error(`No data from request: ${list}`);
+
+        symbols.spot = Object.fromEntries(list.filter(s => s.quote === 'USDT' && s.trade_status === 'tradable' && !s.delisting_time).map(s => [s.base, s.id]));
+        symbols.spotDelisting = Object.fromEntries(list.filter(s => s.quote === 'USDT' && s.delisting_time).map(s => [s.base, new Date(s.delisting_time * 1000).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })]));
     }
     catch (error) {
-
+        console.error('(GATE) Error trying to fetchSymbols (spot)', error);
     }
+
+    try {
+        const req = await axios.get(futureRestUrl);
+        const list = req.data;
+        if (!list || !list.length) throw new Error(`No data from request: ${list}`);
+
+        symbols.future = Object.fromEntries(list.filter(s => s.status === 'trading' && !s.delisting_time).map(s => [s.name.replace('_USDT', ''), s.name]));
+        symbols.futureDelisting = Object.fromEntries(list.filter(s => s.delisting_time).map(s => [s.name.replace('_USDT', ''), new Date(s.delisting_time * 1000).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })]));
+    }
+    catch (error) {
+        console.error('(GATE) Error trying to fetchSymbols (futures)', error);
+    }
+
+    return symbols;
 }
 
 /*
@@ -22,7 +45,7 @@ async function getSymbols() {
 
 */
 
-const force = 1000;
+const force = 4000;
 const streams = new Map();
 
 const spotWsUrl = 'wss://api.gateio.ws/ws/v4/';
@@ -77,24 +100,16 @@ function watchTickers(prices) {
             });
         });
 
-        ws.on('error', err => console.error(`Gate (${market}) WS error`, JSON.parse(err.toString('utf-8'))));
+        ws.on('error', err => console.error(`Gate.watchTickers (${market}) WS error`, err));
 
         ws.once('close', (code, reason) => {
-            console.error(`Gate (${market}) WS closed`, code, reason);
+            console.error(`Gate.watchTickers (${market}) WS closed`, code, reason);
             setTimeout(() => connect(streamUrl, market), 5000);
         });
     }
 
     connect(spotWsUrl);
     connect(futureWsUrl, 'future');
-
-    // Used to see the amount of symbols on the connection that has already received at least some data
-    // setInterval(() => {
-    //     // console.log(prices)
-    //     console.log('GATE');
-    //     console.log('SPOT:', Object.values(prices.spot).filter(s => s[0]).length);
-    //     console.log('FUTURES:', Object.values(prices.future).filter(s => s[0]).length);
-    // }, 1000);
 }
 
 /**
@@ -162,7 +177,7 @@ function watchOrderBook(symbol, market, book) {
 
         ws.on('close', (code, reason) => {
             if (code !== force) { //force close by code logic
-                console.error(streamID, 'CLOSED', Buffer.isBuffer(reason) ? JSON.parse(reason) : reason);
+                console.error(streamID, 'CLOSED', code, reason);
                 setTimeout(connect, 5000);
             }
         });
@@ -184,7 +199,7 @@ function unWatchOrderBook(streamID) {
     streams.delete(streamID);
 }
 
-export default { getSymbols, watchTickers, watchOrderBook, unWatchOrderBook };
+export default { fetchSymbols, watchTickers, watchOrderBook, unWatchOrderBook };
 
 //IMPORTANT: When we first connect to data streams we have no data snapshot, what means we have no data at all at first, and we need it o arrive
 //but the thing is, that it doenst arrive all at once, the server will only send any update when something happen (in our case, a new trade), so sometimes

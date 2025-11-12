@@ -1,10 +1,14 @@
 import { keepAlive, book } from './book.js';
+import report from './operations/report.js';
 import { avgPrice } from './utils.js';
 
 const avoidSymbols = ['TST'];
 
 const targetSpread = 1;
-const targetVolume = 500;
+const targetVolume = 100;
+
+const buy = {};
+const sell = {};
 
 /**
  * This function basically do 2 things:
@@ -23,10 +27,7 @@ const targetVolume = 500;
  */
 export default function (entries, data) {
     // console.clear();
-    console.log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-
-    const buy = {};
-    const sell = {};
+    // console.log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
 
     // [Binance, { CRYPTO: [Gate, Kucoin, Binance, ...] }]
     // exchangeA (spot data) with an object of cryptos each containing a list of exchanges which will be used to get futures data
@@ -58,6 +59,7 @@ export default function (entries, data) {
                     const { bids: spotBids, asks: spotAsks } = bookA;
                     const { bids: futureBids, asks: futureAsks } = bookB;
 
+                    // BUY
                     {
                         const avgAskData = avgPrice(spotAsks, 'asc', targetVolume);
                         const avgBidData = avgPrice(futureBids, 'desc', targetVolume);
@@ -68,19 +70,37 @@ export default function (entries, data) {
 
                             const spread = +((1 - finalAskPrice / finalBidPrice) * 100).toFixed(2);
 
+                            // console.log('BUY', symbol, spread);
+                            if (buy[symbol] && spread <= 0) {
+                                report('COMPRA', symbol, buy[symbol].maxVolume, buy[symbol].created_at);
+                                delete buy[symbol];
+                            }
+
                             if (spread >= targetSpread)
-                                (buy[symbol] ??= []).push({
-                                    buy_spot_on: exchangeA,
-                                    spotAsk: finalAskPrice,
-                                    sell_future_on: exchangeB,
-                                    futureBid: finalBidPrice,
-                                    spread: `${spread}%`,
-                                    volume: Math.min(totalBidVolume, totalAskVolume),
-                                    profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)}`
-                                });
+                                if (buy[symbol]) {
+                                    buy[symbol].spotAsk = finalAskPrice;
+                                    buy[symbol].futureBid = finalBidPrice;
+                                    buy[symbol].spread = `${spread}%`;
+                                    buy[symbol].volume = Math.min(totalBidVolume, totalAskVolume);
+                                    buy[symbol].maxVolume = Math.min(totalBidVolume, totalAskVolume) > buy[symbol].maxVolume ? Math.min(totalBidVolume, totalAskVolume) : buy[symbol].maxVolume;
+                                    buy[symbol].profit = `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)} ($ ${(Math.min(totalBidVolume, totalAskVolume) / avgAsk * avgBid - Math.min(totalBidVolume, totalAskVolume)).toFixed(2)})`;
+                                }
+                                else if (!buy[symbol])
+                                    buy[symbol] = {
+                                        created_at: Date.now(),
+                                        buy_spot_on: exchangeA,
+                                        spotAsk: finalAskPrice,
+                                        sell_future_on: exchangeB,
+                                        futureBid: finalBidPrice,
+                                        spread: `${spread}%`,
+                                        volume: Math.min(totalBidVolume, totalAskVolume),
+                                        maxVolume: Math.min(totalBidVolume, totalAskVolume),
+                                        profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)} ($ ${(Math.min(totalBidVolume, totalAskVolume) / avgAsk * avgBid - Math.min(totalBidVolume, totalAskVolume)).toFixed(2)})`
+                                    }
                         }
                     }
 
+                    // SELL
                     {
                         const avgBidData = avgPrice(spotBids, 'desc', targetVolume);
                         const avgAskData = avgPrice(futureAsks, 'asc', targetVolume);
@@ -91,16 +111,33 @@ export default function (entries, data) {
 
                             const spread = +((1 - finalAskPrice / finalBidPrice) * 100).toFixed(2);
 
+                            // console.log('SELL', symbol, spread);
+                            if (sell[symbol] && spread <= 0) {
+                                report('VENDA', symbol, sell[symbol].maxVolume, sell[symbol].created_at);
+                                delete sell[symbol];
+                            }
+
                             if (spread >= targetSpread)
-                                (sell[symbol] ??= []).push({
-                                    sell_spot_on: exchangeA,
-                                    spotBid: finalBidPrice,
-                                    buy_future_on: exchangeB,
-                                    futureAsk: finalAskPrice,
-                                    spread: `${spread}%`,
-                                    volume: Math.min(totalBidVolume, totalAskVolume),
-                                    profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)}`
-                                });
+                                if (sell[symbol]) {
+                                    sell[symbol].spotBid = finalBidPrice;
+                                    sell[symbol].futureAsk = finalAskPrice;
+                                    sell[symbol].spread = `${spread}%`;
+                                    sell[symbol].volume = Math.min(totalBidVolume, totalAskVolume);
+                                    sell[symbol].maxVolume = Math.min(totalBidVolume, totalAskVolume) > sell[symbol].maxVolume ? Math.min(totalBidVolume, totalAskVolume) : sell[symbol].maxVolume;
+                                    sell[symbol].profit = `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)} ($ ${(Math.min(totalBidVolume, totalAskVolume) / avgAsk * avgBid - Math.min(totalBidVolume, totalAskVolume)).toFixed(2)})`;
+                                }
+                                else if (!sell[symbol])
+                                    sell[symbol] = {
+                                        created_at: Date.now(),
+                                        sell_spot_on: exchangeA,
+                                        spotBid: finalBidPrice,
+                                        buy_future_on: exchangeB,
+                                        futureAsk: finalAskPrice,
+                                        spread: `${spread}%`,
+                                        volume: Math.min(totalBidVolume, totalAskVolume),
+                                        maxVolume: Math.min(totalBidVolume, totalAskVolume),
+                                        profit: `$ ${(targetVolume / avgAsk * avgBid - targetVolume).toFixed(2)} ($ ${(Math.min(totalBidVolume, totalAskVolume) / avgAsk * avgBid - Math.min(totalBidVolume, totalAskVolume)).toFixed(2)})`
+                                    }
                         }
                     }
                 }
@@ -108,8 +145,9 @@ export default function (entries, data) {
         }
     }
 
-    console.log(`${'\x1b[32m'}COMPRA${'\x1b[0m'}`, buy)
-    console.log(`${'\x1b[31m'}VENDA ${'\x1b[0m'}`, sell);
+    // console.log(`${'\x1b[32m'}COMPRA${'\x1b[0m'}`, buy);
+    // console.log(`${'\x1b[31m'}VENDA ${'\x1b[0m'}`, sell);
+
 }
 
 //when buy: exchangeA.asks & exchangeB.bids

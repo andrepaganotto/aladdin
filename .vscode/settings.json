@@ -1,0 +1,6 @@
+{
+    "typescript.preferences.autoImportFileExcludePatterns": [
+        "**/node_modules/@redis/**",
+        "**/node_modules/redis/**"
+    ]
+}

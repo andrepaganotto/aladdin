@@ -2,6 +2,68 @@ import axios from 'axios';
 import WebSocket from 'ws';
 import { findProperty } from '../utils.js';
 
+//This is a read-only api key that is used for the purpose of getting spot symbol delisting info only.
+const apiKey = process.env.BINANCE_API_KEY;
+const spotDelistUrl = 'https://api.binance.com/sapi/v1/spot/delist-schedule';
+
+const spotRestUrl = 'https://api.binance.com/api/v3';
+const futureRestUrl = 'https://fapi.binance.com/fapi/v1';
+
+const symbols = {};
+
+async function fetchSymbols(refresh = false) {
+    if (!refresh && Object.keys(symbols).length) return symbols;
+
+    try {
+        const req = await axios.get(spotRestUrl + '/exchangeInfo?permissions=SPOT');
+        const list = req.data?.symbols;
+        if (!list || !list.length) throw new Error(`No data from request: ${list}`);
+
+        symbols.spot = Object.fromEntries(list.filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING').map(s => [s.baseAsset, s.symbol]));
+        //TODO -> symbols.spotDelisting = get from the api (needs api key)
+    }
+    catch (error) {
+        console.error('(Binance) Error trying to fetchSymbols (spot)', error);
+    }
+
+    try {
+        const req = await axios.get(spotDelistUrl, { params: { timestamp: Date.now() }, headers: { "X-MBX-APIKEY": apiKey } });
+        const list = req.data;
+        if (!list) throw new Error(`No data from request: ${list}`);
+
+        symbols.spotDelisting = Object.fromEntries(list.flatMap(({ delistTime, symbols }) => symbols.filter(s => s.includes('USDT')).map(s => [s.replace('USDT', ''), new Date(delistTime).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })])));
+    }
+    catch (error) {
+        console.error('(Binance) Error trying to fetchSymbols (spot delisting)', error);
+    }
+
+    try {
+        const req = await axios.get(futureRestUrl + '/exchangeInfo');
+        const list = req.data?.symbols;
+        if (!list || !list.length) throw new Error(`No data from request: ${list}`);
+
+        const futureFilter = s => s.quoteAsset === 'USDT' && s.marginAsset === 'USDT' && s.status === 'TRADING' && s.contractType === 'PERPETUAL';
+        //This filters only symbols which have delivery date set for the next 7 days from now (basically symbols that will be delisted in the next 7 days)
+        const futureDelistFilter = s => (s.deliveryDate >= Date.now() && s.deliveryDate - Date.now() <= 6.048e8) && s.quoteAsset === 'USDT' && s.marginAsset === 'USDT' && s.contractType === 'PERPETUAL';
+
+        symbols.future = Object.fromEntries(list.filter(futureFilter).map(s => [s.baseAsset, s.symbol]));
+        symbols.futureDelisting = Object.fromEntries(list.filter(futureDelistFilter).map(s => [s.baseAsset, new Date(s.deliveryDate).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })]));
+    }
+    catch (error) {
+        console.error('(Binance) Error trying to fetchSymbols (futures)', error);
+    }
+
+    return symbols;
+}
+
+/*
+
+    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+*/
+
 const spotUrl = 'wss://stream.binance.com:9443/stream?streams=';
 const futureUrl = 'wss://fstream.binance.com/stream?streams=';
 
@@ -53,6 +115,8 @@ function watchTickers(prices) {
 }
 
 
+//IMPORTANT: Binance doesnt give a shit if you send a non existing or delisted symbol on the stream,
+//it simply ignores it and keeps sending the data to all other valid streams
 
 
 
@@ -80,7 +144,7 @@ function watchOrderBook(symbol, market, book) {
 
         streams.set(streamID, ws);
 
-        ws.on('open', () => console.log('Open'));
+        // ws.on('open', () => console.log('Open'));
 
         ws.once('message', async buffer => {
             const data = JSON.parse(buffer).data;
@@ -92,7 +156,7 @@ function watchOrderBook(symbol, market, book) {
             const RETRY_MAX = 5000; // ms
             while (true) {
                 try {
-                    const req = await axios.get(`https://api.binance.com/api/v3/depth?symbol=${symbol}USDT&limit=100`);
+                    const req = await axios.get((isSpot ? spotRestUrl : futureRestUrl) + `/depth?symbol=${symbol}USDT&limit=100`);
                     snapshot = req.data;
                 }
                 catch (err) {
@@ -126,7 +190,7 @@ function watchOrderBook(symbol, market, book) {
             for (let i = 0; i < events.length; i++) {
                 const event = events[i];
 
-                console.log('Event ' + i, 'u: ' + event.u, 'U ' + event.U);
+                // console.log('Event ' + i, 'u: ' + event.u, 'U ' + event.U);
 
                 if (event.u <= book.depthID) continue;
                 if (event.U > (book.depthID + 1)) return ws.close(1001, 'OUT OF SYNC');
@@ -198,38 +262,4 @@ function unWatchOrderBook(streamID) {
     streams.delete(streamID);
 }
 
-export default { watchTickers, watchOrderBook, unWatchOrderBook };
-
-//IMPORTANT: Binance doesnt give a shit if you send a non existing or delisted symbol on the stream,
-//it simply ignores it and keeps sending the data to all other valid streams
-
-/**
-    How to filter NON USABLE (spot) symbols
-
-    THE LIST IS INSIDE symbols (data.symbols)
-
-    GET https://api.binance.com/api/v3/exchangeInfo?permissions=SPOT
-
-    symbol.symbol = "CRYPTOUSDT"
-
-    symbol.baseAsset = "CRYPTO"
-
-    if the symbol is not present on the list
-    OR symbol.status !== "TRADING"
-    OR symbol.quoteAsset !== "USDT"
-    
-    ----------------------------------
-
-    How to filter NON USABLE (future) symbols
-
-    GET https://fapi.binance.com/fapi/v1/exchangeInfo
-
-    symbol.symbol = "CRYPTOUSDT"
-
-    symbol.baseAsset = "CRYPTO"
-
-    if symbol.status !== "TRADING"
-    OR symbol.contractType !== "PERPETUAL"
-    OR symbol.quoteAsset !== "USDT"
-    OR symbol.marginAsset !== "USDT"
- */
+export default { fetchSymbols, watchTickers, watchOrderBook, unWatchOrderBook };
