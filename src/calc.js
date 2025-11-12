@@ -4,7 +4,7 @@ import { avgPrice } from './utils.js';
 
 const avoidSymbols = ['TST'];
 
-const targetSpread = 1;
+const targetSpread = 1.35;
 const targetVolume = 100;
 
 const buy = {};
