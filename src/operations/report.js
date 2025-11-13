@@ -12,6 +12,7 @@ export default async (side, symbol, volume, startTime) => {
         side,
         symbol,
         maxVolume: volume,
-        duration: new Date(Date.now() - startTime).getSeconds()
+        start: startTime,
+        end: Date.now()
     });
 }
