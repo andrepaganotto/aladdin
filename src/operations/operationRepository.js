@@ -5,7 +5,8 @@ const schema = new Schema('operations', {
     side: { type: 'string' },
     symbol: { type: 'string' },
     maxVolume: { type: 'number' },
-    duration: { type: 'number' }
+    start: { type: 'number' },
+    end: { type: 'number' }
 });
 
 const repository = new Repository(schema, redis);
