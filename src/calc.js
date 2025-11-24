@@ -6,8 +6,8 @@ import { avgPrice } from './utils.js';
 
 const avoidSymbols = ['TST'];
 
-const targetSpread = 0.35;
-const targetVolume = 10;
+const targetSpread = parseFloat(process.env.SPREAD);
+const targetVolume = parseInt(process.env.VOLUME);
 
 const buy = {};
 const sell = {};
