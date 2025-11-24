@@ -59,11 +59,24 @@ function watchTickers(prices) {
     const spotSymbols = Object.keys(prices.spot);
     const futureSymbols = Object.keys(prices.future);
 
+    let stopped = false;
+    let spotWs = null;
+    let futureWs = null;
+    let spotReconnectTimeout = null;
+    let futureReconnectTimeout = null;
+
     function connect(streamUrl, market = 'spot') {
+        if (stopped) return;
+
         const isSpot = market === 'spot';
         const symbolNeedle = isSpot ? symbolNeedleSpot : symbolNeedlefuture;
 
         const ws = new WebSocket(streamUrl);
+
+        if (isSpot)
+            spotWs = ws;
+        else
+            futureWs = ws;
 
         ws.once('open', () => {
             console.log(`Connected to Gate (${market}) WS`)
@@ -77,6 +90,8 @@ function watchTickers(prices) {
         });
 
         ws.once('message', firstData => {
+            if (stopped) return;
+
             //We check the first incoming message after subscribing so we make sure the connection was successful or not, only listening if it was
             const data = JSON.parse(firstData.toString('utf-8'));
 
@@ -87,6 +102,8 @@ function watchTickers(prices) {
                 return console.error(`Gate (${market}) WS FAIL when SUBSCRIBING`, data);
 
             ws.on('message', buffer => {
+                if (stopped) return;
+
                 //Since we are dealing with crypto exchanges data streams, we will ALWAYS receive stringfied JSON, which means
                 //we are always receiving a string, the raw data will be in bytes, but this bytes translates to a stringfied JSON object
                 const priceIndex = buffer.indexOf(priceNeedle);
@@ -100,16 +117,43 @@ function watchTickers(prices) {
             });
         });
 
-        ws.on('error', err => console.error(`Gate.watchTickers (${market}) WS error`, err));
+        ws.on('error', err => {
+            if (stopped) return;
+            console.error(`Gate.watchTickers (${market}) WS error`, err)
+        });
 
         ws.once('close', (code, reason) => {
             console.error(`Gate.watchTickers (${market}) WS closed`, code, reason);
-            setTimeout(() => connect(streamUrl, market), 5000);
+
+            if (stopped) return;
+
+            const timeoutId = setTimeout(() => connect(streamUrl, market), 5000);
+            if (isSpot)
+                spotReconnectTimeout = timeoutId;
+            else
+                futureReconnectTimeout = timeoutId;
+
         });
     }
 
     connect(spotWsUrl);
     connect(futureWsUrl, 'future');
+
+    function stop() {
+        stopped = true;
+
+        if (spotReconnectTimeout) clearTimeout(spotReconnectTimeout);
+        if (futureReconnectTimeout) clearTimeout(futureReconnectTimeout);
+
+        if (spotWs && (spotWs.readyState === WebSocket.OPEN || spotWs.readyState === WebSocket.CONNECTING))
+            spotWs.close();
+
+        if (futureWs && (futureWs.readyState === WebSocket.OPEN || futureWs.readyState === WebSocket.CONNECTING))
+            futureWs.close();
+
+    }
+    
+    return { stop };
 }
 
 /**

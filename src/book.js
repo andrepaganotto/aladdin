@@ -1,9 +1,6 @@
 import { debounce } from "./utils.js";
 
-import Gate from "./exchanges/Gate.js";
-import Binance from "./exchanges/Binance.js";
-
-const exchanges = { Gate, Binance };
+import exchanges from "./exchanges/exchanges.js";
 
 const STREAM_TIMER = 60000;
 const streams = new Map(); // Exchange:market:symbol -> debounce();
@@ -37,3 +34,5 @@ export function keepAlive(exchange, market, symbol) {
 
     streams.set(streamID, stream);
 }
+
+//TODO -> stream book data to frontend when requested, make a list and stream the data from cryptos inside that list

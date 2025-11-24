@@ -1,30 +1,32 @@
+import app from './app.js';
 import redis from './redis.js';
+import wsServer from './wss.js';
+
 import symbolsRepository from './symbols/symbolsRepository.js';
-import operationRepository from './operations/operationRepository.js';
+import operationRepository from './operations/operationsRepository.js';
 
-// import markets from './markets.js';
+import getMarkets from './markets.js';
 import data from './data.js';
-import Gate from './exchanges/Gate.js';
 
-const markets = { Gate: { spot: [], future: [] } };
+const port = parseInt(process.env.PORT);
+const server = app.listen(port, () => console.log(`Server running on port: ${port}`));
+
+export const wss = wsServer(server);
 
 async function start() {
-    await redis.connect();
-    await operationRepository.createIndex();
+    try {
+        await redis.connect();
+        await operationRepository.createIndex();
 
-    const gateMarkets = await Gate.fetchSymbols();
-    // console.log(gateMarkets);
+        await operationRepository.getOperations();
 
-    const intersected = Object.keys(gateMarkets.spot).filter(s => Object.keys(gateMarkets.future).includes(s));
-    // console.log(intersected);
+        const markets = await getMarkets();
 
-    markets.Gate.spot = intersected;
-    markets.Gate.future = intersected;
-
-    // console.log('SPOT', Object.keys(gateMarkets.spot).length, Object.keys(gateMarkets.spotDelisting).length);
-    // console.log('FUTURE', Object.keys(gateMarkets.future).length, Object.keys(gateMarkets.futureDelisting).length);
-
-    data(markets);
+        data(markets);
+    }
+    catch (error) {
+        console.error('Fail on server startup', error);
+    }
 }
 
 start();

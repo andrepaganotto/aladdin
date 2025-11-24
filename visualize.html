@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Visualização de intervalos (start/end) em segundos - Plotly</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        #error {
+            color: red;
+            white-space: pre-wrap;
+            margin-top: 10px;
+        }
+
+        #chart {
+            width: 100%;
+            height: 600px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Visualização de intervalos (start/end)</h1>
+
+    <p>
+        Escolha um arquivo JSON com um array de objetos contendo:<br>
+        <code>symbol: string, side: "COMPRA" | "VENDA", maxVolume: number, start: unix-ms, end: unix-ms</code>
+    </p>
+
+    <input type="file" id="fileInput" accept=".json" />
+    <div id="error"></div>
+
+    <div id="chart"></div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const errorDiv = document.getElementById('error');
+        const chartDiv = document.getElementById('chart');
+
+        fileInput.addEventListener('change', handleFile, false);
+
+        function handleFile(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    errorDiv.textContent = "";
+                    const data = JSON.parse(e.target.result);
+                    if (!Array.isArray(data) || data.length === 0) {
+                        throw new Error("O JSON precisa ser um array não vazio.");
+                    }
+                    drawChart(data);
+                } catch (err) {
+                    errorDiv.textContent = "Erro ao processar JSON: " + err.message;
+                    Plotly.purge(chartDiv);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Duração em formato HH:MM:SS.mmm a partir de segundos
+        function formatDuration(seconds) {
+            const totalMs = Math.round(seconds * 1000);
+            const h = Math.floor(totalMs / 3600000);
+            const m = Math.floor((totalMs % 3600000) / 60000);
+            const s = Math.floor((totalMs % 60000) / 1000);
+            const ms = totalMs % 1000;
+
+            const pad = (n, size = 2) => String(n).padStart(size, '0');
+
+            return `${pad(h)}:${pad(m)}:${pad(s)}.${String(ms).padStart(3, '0')}`;
+        }
+
+        function drawChart(rawData) {
+            // validação + normalização
+            const data = rawData.map((item, idx) => {
+                if (
+                    typeof item.symbol !== "string" ||
+                    typeof item.side !== "string" ||
+                    typeof item.maxVolume !== "number" ||
+                    typeof item.start !== "number" ||
+                    typeof item.end !== "number"
+                ) {
+                    throw new Error("Item inválido no índice " + idx);
+                }
+                if (item.end < item.start) {
+                    throw new Error("end < start no índice " + idx);
+                }
+                return {
+                    symbol: item.symbol,
+                    side: item.side,
+                    maxVolume: item.maxVolume,
+                    start: item.start,
+                    end: item.end
+                };
+            });
+
+            const startMin = Math.min(...data.map(d => d.start));
+            const endMax = Math.max(...data.map(d => d.end));
+            const totalSeconds = (endMax - startMin) / 1000;
+
+            if (totalSeconds <= 0) {
+                throw new Error("Intervalo total de tempo inválido.");
+            }
+
+            const rangeStartHuman = new Date(startMin).toLocaleString();
+            const rangeEndHuman = new Date(endMax).toLocaleString();
+
+            // converte para segundos relativos + infos humanas
+            const mapped = data.map(d => {
+                const start_s = (d.start - startMin) / 1000;
+                const end_s = (d.end - startMin) / 1000;
+                const duration = end_s - start_s;
+
+                const startDate = new Date(d.start);
+                const endDate = new Date(d.end);
+
+                const startTime = startDate.toLocaleTimeString();
+                const endTime = endDate.toLocaleTimeString();
+                const durationHuman = formatDuration(duration);
+
+                return {
+                    symbol: d.symbol,
+                    side: d.side,
+                    maxVolume: d.maxVolume,
+                    start_s,
+                    end_s,
+                    duration,
+                    label: `${d.symbol} (${d.side})`,
+                    startTime,
+                    endTime,
+                    durationHuman
+                };
+            });
+
+            // ordena pela hora de início (mais cedo em cima)
+            const mappedSorted = [...mapped].sort((a, b) => a.start_s - b.start_s);
+
+            // separa COMPRA / VENDA
+            const compras = mappedSorted.filter(d => d.side === "COMPRA");
+            const vendas = mappedSorted.filter(d => d.side === "VENDA");
+
+            const categoryOrder = mappedSorted.map(d => d.label);
+
+            const traceCompra = {
+                type: "bar",
+                orientation: "h",
+                name: "COMPRA",
+                x: compras.map(d => d.duration),          // duração (s)
+                base: compras.map(d => d.start_s),        // início em segundos
+                y: compras.map(d => d.label),
+                marker: { color: "#4caf50" },
+                customdata: compras.map(d => [
+                    d.start_s,        // 0
+                    d.end_s,          // 1
+                    d.maxVolume,      // 2
+                    d.startTime,      // 3
+                    d.endTime,        // 4
+                    d.symbol,         // 5
+                    d.durationHuman   // 6
+                ]),
+                hovertemplate:
+                    "<b>%{customdata[5]} (COMPRA)</b><br>" +
+                    "Início: %{customdata[0]:.3f}s (%{customdata[3]})<br>" +
+                    "Fim: %{customdata[1]:.3f}s (%{customdata[4]})<br>" +
+                    "Duração: %{x:.3f}s (%{customdata[6]})<br>" +
+                    "maxVolume: %{customdata[2]}<extra></extra>"
+            };
+
+            const traceVenda = {
+                type: "bar",
+                orientation: "h",
+                name: "VENDA",
+                x: vendas.map(d => d.duration),
+                base: vendas.map(d => d.start_s),
+                y: vendas.map(d => d.label),
+                marker: { color: "#f44336" },
+                customdata: vendas.map(d => [
+                    d.start_s,        // 0
+                    d.end_s,          // 1
+                    d.maxVolume,      // 2
+                    d.startTime,      // 3
+                    d.endTime,        // 4
+                    d.symbol,         // 5
+                    d.durationHuman   // 6
+                ]),
+                hovertemplate:
+                    "<b>%{customdata[5]} (VENDA)</b><br>" +
+                    "Início: %{customdata[0]:.3f}s (%{customdata[3]})<br>" +
+                    "Fim: %{customdata[1]:.3f}s (%{customdata[4]})<br>" +
+                    "Duração: %{x:.3f}s (%{customdata[6]})<br>" +
+                    "maxVolume: %{customdata[2]}<extra></extra>"
+            };
+
+            const layout = {
+                barmode: "overlay",
+                title: {
+                    text:
+                        "Intervalos por símbolo<br>" +
+                        `<sub>De ${rangeStartHuman} até ${rangeEndHuman} (horário local do navegador)</sub>`
+                },
+                xaxis: {
+                    title: "Tempo (segundos desde o primeiro START)",
+                    rangemode: "tozero",
+                    zeroline: true,
+                    ticksuffix: " s",
+                    showgrid: true
+                },
+                yaxis: {
+                    automargin: true,
+                    title: "Execuções",
+                    categoryorder: "array",
+                    categoryarray: categoryOrder
+                },
+                legend: {
+                    orientation: "h",
+                    x: 0.5,
+                    xanchor: "center",
+                    y: 1.1
+                },
+                margin: {
+                    l: 240,
+                    r: 40,
+                    t: 80,
+                    b: 70
+                }
+            };
+
+            Plotly.newPlot(chartDiv, [traceCompra, traceVenda], layout, {
+                responsive: true,
+                displaylogo: false
+            });
+        }
+    </script>
+</body>
+
+</html>

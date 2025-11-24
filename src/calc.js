@@ -1,14 +1,18 @@
+import operationsController from './operations/operationsController.js';
+import { wss } from './server.js';
+
 import { keepAlive, book } from './book.js';
-import report from './operations/report.js';
 import { avgPrice } from './utils.js';
 
 const avoidSymbols = ['TST'];
 
-const targetSpread = 1.35;
-const targetVolume = 100;
+const targetSpread = 0.35;
+const targetVolume = 10;
 
 const buy = {};
 const sell = {};
+
+const toDelete = { buy: [], sell: [] };
 
 /**
  * This function basically do 2 things:
@@ -22,17 +26,13 @@ const sell = {};
  * - If there was any trade that opens a spread, start listening to the book data to see if theres volume so we can profit
  * - If there is any enough volume to profit, tell the user so it can realize the profit
  * 
- * @param {*} entries 
+ * @param {Record<string, Record<string, string[]>>} entries 
  * @param {*} data 
  */
 export default function (entries, data) {
-    // console.clear();
-    // console.log('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-
     // [Binance, { CRYPTO: [Gate, Kucoin, Binance, ...] }]
     // exchangeA (spot data) with an object of cryptos each containing a list of exchanges which will be used to get futures data
     for (const [exchangeA, symbols] of entries) {
-
         // [CRYPTO, [Gate, Kucoin, Binance, ...]]
         for (const [symbol, exchanges] of symbols) {
             //Some symbols have the same name across exchanges but are completely different tokens, or we just want to ignore them lol
@@ -72,7 +72,8 @@ export default function (entries, data) {
 
                             // console.log('BUY', symbol, spread);
                             if (buy[symbol] && spread <= 0) {
-                                report('COMPRA', symbol, buy[symbol].maxVolume, buy[symbol].created_at);
+                                toDelete.buy.push(symbol);
+                                operationsController.reportOperation('COMPRA', symbol, buy[symbol].maxVolume, buy[symbol].created_at);
                                 delete buy[symbol];
                             }
 
@@ -113,7 +114,8 @@ export default function (entries, data) {
 
                             // console.log('SELL', symbol, spread);
                             if (sell[symbol] && spread <= 0) {
-                                report('VENDA', symbol, sell[symbol].maxVolume, sell[symbol].created_at);
+                                toDelete.sell.push(symbol);
+                                operationsController.reportOperation('VENDA', symbol, sell[symbol].maxVolume, sell[symbol].created_at);
                                 delete sell[symbol];
                             }
 
@@ -145,9 +147,14 @@ export default function (entries, data) {
         }
     }
 
-    // console.log(`${'\x1b[32m'}COMPRA${'\x1b[0m'}`, buy);
-    // console.log(`${'\x1b[31m'}VENDA ${'\x1b[0m'}`, sell);
-
+    //If theres any opportunity happening, broadcast it to the client
+    if (Object.keys(buy).length || Object.keys(sell).length) wss.broadcast({ buy, sell });
+    
+    if (toDelete.buy.length || toDelete.sell.length) {
+        wss.broadcast({ toDelete });
+        toDelete.buy = [];
+        toDelete.sell = [];
+    }
 }
 
 //when buy: exchangeA.asks & exchangeB.bids
