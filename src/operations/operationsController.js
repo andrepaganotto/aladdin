@@ -1,7 +1,7 @@
 import { wss } from '../server.js';
 import operationsRepository from './operationsRepository.js';
 
-const testing = Boolean(process.env.TESTING);
+const testing = process.env.TESTING === 'true';
 
 async function reportOperation(side, symbol, volume, startTime) {
     console.log(
