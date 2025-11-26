@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Gate.io Order Book Visualizer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        :root {
+            --bg: #020617;
+            --bg-2: #020617;
+            --card-bg: #020617;
+            --accent: #22c55e;
+            --accent-sell: #ef4444;
+            --text-main: #e5e7eb;
+            --text-muted: #9ca3af;
+            --border-subtle: #1f2937;
+            --row-hover: rgba(148, 163, 184, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                sans-serif;
+            background: radial-gradient(circle at top, #020617 0, #020617 40%, #000 100%);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+        }
+
+        .app {
+            width: min(1100px, 100%);
+            padding: 1.5rem;
+        }
+
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 1rem;
+            gap: 1rem;
+        }
+
+        .app-header h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            letter-spacing: 0.04em;
+        }
+
+        .app-header p {
+            margin: 0.25rem 0 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .card {
+            background:
+                radial-gradient(circle at top left, #0b1120 0, #020617 55%, #020617 100%);
+            border-radius: 0.9rem;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            padding: 1rem 1.25rem 1.25rem;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.65);
+        }
+
+        .controls-card {
+            margin-bottom: 1rem;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .label-inline {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            flex: 1 1 160px;
+            background: #020617;
+            border-radius: 999px;
+            border: 1px solid var(--border-subtle);
+            padding: 0.55rem 0.9rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            outline: none;
+            font-variant-numeric: tabular-nums;
+        }
+
+        input[type="text"]::placeholder,
+        input[type="number"]::placeholder {
+            color: #4b5563;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+        }
+
+        select {
+            flex: 0 0 auto;
+            background: #020617;
+            border-radius: 999px;
+            border: 1px solid var(--border-subtle);
+            padding: 0.55rem 0.9rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        select:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+        }
+
+        button {
+            border-radius: 999px;
+            border: none;
+            padding: 0.55rem 1.1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #020617;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            filter: brightness(1.08);
+        }
+
+        button:active {
+            transform: translateY(1px);
+            filter: brightness(0.98);
+        }
+
+        .status-row {
+            margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+        }
+
+        .status-pill {
+            padding: 0.15rem 0.75rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            border: 1px solid transparent;
+            font-size: 0.75rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .status-pill span.dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 999px;
+            display: inline-block;
+        }
+
+        .status--disconnected {
+            background: rgba(148, 163, 184, 0.05);
+            color: var(--text-muted);
+            border-color: rgba(148, 163, 184, 0.25);
+        }
+
+        .status--disconnected .dot {
+            background: #6b7280;
+        }
+
+        .status--connecting {
+            background: rgba(56, 189, 248, 0.06);
+            color: #38bdf8;
+            border-color: rgba(56, 189, 248, 0.35);
+        }
+
+        .status--connecting .dot {
+            background: #38bdf8;
+        }
+
+        .status--connected {
+            background: rgba(34, 197, 94, 0.06);
+            color: #22c55e;
+            border-color: rgba(34, 197, 94, 0.35);
+        }
+
+        .status--connected .dot {
+            background: #22c55e;
+        }
+
+        .status--error {
+            background: rgba(248, 113, 113, 0.08);
+            color: #f97373;
+            border-color: rgba(248, 113, 113, 0.4);
+        }
+
+        .status--error .dot {
+            background: #f97373;
+        }
+
+        .status-details {
+            color: var(--text-muted);
+        }
+
+        .orderbook-card {
+            margin-top: 0.25rem;
+        }
+
+        .orderbook-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            align-items: baseline;
+            border-bottom: 1px solid var(--border-subtle);
+            padding-bottom: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .pair-title {
+            display: flex;
+            flex-direction: column;
+            gap: 0.1rem;
+        }
+
+        .pair-title h2 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .pair-title small {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .spread {
+            text-align: right;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .spread strong {
+            color: #e5e7eb;
+        }
+
+        .trade-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .trade-summary-line strong {
+            color: #e5e7eb;
+        }
+
+        .trade-summary-line.warning {
+            color: #f97373;
+        }
+
+        .orderbook-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.75rem;
+        }
+
+        .side {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        .side-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.15rem;
+        }
+
+        .side-header span.label {
+            font-size: 0.8rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .side-header span.side-type--asks {
+            color: var(--accent-sell);
+        }
+
+        .side-header span.side-type--bids {
+            color: var(--accent);
+        }
+
+        .ob-header-row {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1.1fr;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.35rem;
+            color: var(--text-muted);
+            border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+        }
+
+        .ob-header-row span {
+            text-align: right;
+        }
+
+        .ob-header-row span:first-child {
+            text-align: left;
+        }
+
+        .ob-body {
+            max-height: 420px;
+            overflow: scroll;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .ob-row {
+            position: relative;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1.1fr;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.82rem;
+            line-height: 1.35;
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+
+        .ob-row:hover {
+            background: var(--row-hover);
+        }
+
+        .ob-row--fill {
+            box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.42);
+        }
+
+        .ob-row--fill .ob-cell--price {
+            color: #facc15;
+        }
+
+        .ob-cell {
+            z-index: 2;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .ob-cell--price {
+            text-align: left;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .ob-row-bar {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            opacity: 0.9;
+            pointer-events: none;
+        }
+
+        .ob-row-bar--asks {
+            background: linear-gradient(to left,
+                    rgba(239, 68, 68, 0.25),
+                    transparent);
+            transform-origin: right center;
+            right: 0;
+        }
+
+        .ob-row-bar--bids {
+            background: linear-gradient(to right,
+                    rgba(34, 197, 94, 0.25),
+                    transparent);
+            transform-origin: left center;
+            left: 0;
+        }
+
+        .ob-row-fill-bar {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .ob-row-fill-bar--asks {
+            background: linear-gradient(to left,
+                    rgba(250, 204, 21, 0.9),
+                    transparent);
+            transform-origin: right center;
+            right: 0;
+        }
+
+        .ob-row-fill-bar--bids {
+            background: linear-gradient(to right,
+                    rgba(250, 204, 21, 0.9),
+                    transparent);
+            transform-origin: left center;
+            left: 0;
+        }
+
+        .muted {
+            color: var(--text-muted);
+        }
+
+        .take-indicator {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 800px) {
+            .ob-body {
+                max-height: 320px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <header class="app-header">
+            <div>
+                <h1>Gate.io Live Order Book</h1>
+                <p>Streaming spot order book via WebSocket (top levels, visual depth)</p>
+            </div>
+        </header>
+
+        <section class="card controls-card">
+            <form id="pair-form" autocomplete="off">
+                <label for="pair-input">Currency pair (Gate.io format)</label>
+                <div class="controls-row">
+                    <input id="pair-input" type="text" spellcheck="false" placeholder="BTC_USDT" list="pair-list" />
+                    <datalist id="pair-list">
+                        <option value="BTC_USDT"></option>
+                        <option value="ETH_USDT"></option>
+                        <option value="SOL_USDT"></option>
+                        <option value="XRP_USDT"></option>
+                        <option value="DOGE_USDT"></option>
+                    </datalist>
+                    <button id="connect-btn" type="submit">
+                        Connect
+                    </button>
+                </div>
+
+                <div style="margin-top: 0.9rem;">
+                    <label class="label-inline">Market order simulator</label>
+                    <div class="controls-row">
+                        <select id="side-input">
+                            <option value="buy">Buy (consume asks)</option>
+                            <option value="sell">Sell (consume bids)</option>
+                        </select>
+                        <input id="volume-input" type="number" min="0" step="0.0001"
+                            placeholder="Cash volume (e.g. 1000)" />
+                    </div>
+                </div>
+            </form>
+            <div class="status-row">
+                <div id="status-pill" class="status-pill status--disconnected">
+                    <span class="dot"></span>
+                    <span id="status-text">Disconnected</span>
+                </div>
+                <div id="status-details" class="status-details">
+                    Choose a pair and click Connect.
+                </div>
+            </div>
+        </section>
+
+        <section class="card orderbook-card">
+            <div class="orderbook-header">
+                <div class="pair-title">
+                    <h2 id="pair-label">BTC_USDT</h2>
+                    <small id="last-update" class="muted">Waiting for data…</small>
+                </div>
+                <div class="spread" id="spread">
+                    Spread: <strong>—</strong>
+                </div>
+            </div>
+
+            <div id="trade-summary" class="trade-summary">
+                <div class="trade-summary-line">
+                    Set side &amp; cash volume to preview a market order using the live book.
+                </div>
+            </div>
+
+            <div class="orderbook-grid">
+                <section class="side side--asks">
+                    <div class="side-header">
+                        <span class="label">Asks (sellers)</span>
+                        <span class="side-type--asks">Sell</span>
+                    </div>
+                    <div class="ob-header-row">
+                        <span>Price</span>
+                        <span>Size</span>
+                        <span>Total (USDT)</span>
+                    </div>
+                    <div id="asks-body" class="ob-body"></div>
+                </section>
+
+                <section class="side side--bids">
+                    <div class="side-header">
+                        <span class="label">Bids (buyers)</span>
+                        <span class="side-type--bids">Buy</span>
+                    </div>
+                    <div class="ob-header-row">
+                        <span>Price</span>
+                        <span>Size</span>
+                        <span>Total (USDT)</span>
+                    </div>
+                    <div id="bids-body" class="ob-body"></div>
+                </section>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        (function () {
+            const WS_URL = "wss://api.gateio.ws/ws/v4/";
+            const CHANNEL = "spot.order_book";
+            const LEVEL = "50";        // number of levels per side (5 / 10 / 20 / 50 / 100)
+            const INTERVAL = "100ms";  // 100ms or 1000ms
+            const DISPLAY_ROWS = 30;   // how many rows to render per side (<= LEVEL)
+
+            let ws = null;
+            let currentPair = "BTC_USDT";
+            let isConnecting = false;
+
+            const state = {
+                bids: [],
+                asks: [],
+                lastUpdateTime: null
+            };
+
+            const tradeSettings = {
+                side: "buy",
+                cash: 0
+            };
+
+            let lastTradeComputation = null;
+
+            const els = {
+                pairForm: document.getElementById("pair-form"),
+                pairInput: document.getElementById("pair-input"),
+                connectBtn: document.getElementById("connect-btn"),
+                sideInput: document.getElementById("side-input"),
+                volumeInput: document.getElementById("volume-input"),
+                statusPill: document.getElementById("status-pill"),
+                statusText: document.getElementById("status-text"),
+                statusDetails: document.getElementById("status-details"),
+                pairLabel: document.getElementById("pair-label"),
+                lastUpdate: document.getElementById("last-update"),
+                spread: document.getElementById("spread"),
+                asksBody: document.getElementById("asks-body"),
+                bidsBody: document.getElementById("bids-body"),
+                tradeSummary: document.getElementById("trade-summary")
+            };
+
+            function setStatus(type, text, details) {
+                els.statusPill.className = "status-pill status--" + type;
+                els.statusText.textContent = text;
+                if (details !== undefined && details !== null) {
+                    els.statusDetails.textContent = details;
+                }
+            }
+
+            function formatTime(ms) {
+                if (!ms) return "";
+                const d = new Date(ms);
+                return (
+                    d.toLocaleTimeString(undefined, {
+                        hour12: false,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    }) +
+                    "." +
+                    String(d.getMilliseconds()).padStart(3, "0")
+                );
+            }
+
+            function formatPrice(v) {
+                if (!isFinite(v)) return "";
+                if (v >= 1000) return v.toFixed(2);
+                if (v >= 1) return v.toFixed(3);
+                if (v >= 0.1) return v.toFixed(4);
+                return v.toFixed(6);
+            }
+
+            function formatAmount(v) {
+                if (!isFinite(v)) return "";
+                if (v >= 1000) return v.toFixed(0);
+                if (v >= 1) return v.toFixed(3);
+                return v.toFixed(6);
+            }
+
+            /**
+             * Calculates the average price of a trade based on cash volume (price * volume)
+             * given an order book side (bids or asks).
+             * This is used to know what price you will pay / receive when executing a market order.
+             *
+             * @param {Array<[number, number]>} arr - Array of [price, volume] pairs, any order.
+             * @param {'asc' | 'desc'} sort - asc for asks (low -> high), desc for bids (high -> low).
+             * @param {number} vol - Total cash amount to be spent/received (in quote currency).
+             * @returns {Array & {
+             *   fills: Array<{price:number, bookVolume:number, takenBase:number, takenCash:number}>,
+             *   totalCashUsed: number,
+             *   totalBaseFilled: number,
+             *   fullyFilled: boolean
+             * } | undefined}
+             *   result[0] = avgPrice, result[1] = lastPriceUsed, result[2] = totalCashAvailable
+             */
+            function avgPrice(arr, sort = "asc", vol) {
+                if (!Array.isArray(arr) || !arr.length || !isFinite(vol) || vol <= 0) {
+                    return undefined;
+                }
+
+                let levels = arr
+                    .map(([p, v]) => [Number(p), Number(v)])
+                    .filter(([p, v]) => isFinite(p) && isFinite(v) && v > 0);
+
+                if (!levels.length) return undefined;
+
+                if (sort === "asc") {
+                    levels.sort((a, b) => a[0] - b[0]);
+                } else if (sort === "desc") {
+                    levels.sort((a, b) => b[0] - a[0]);
+                }
+
+                let remaining = vol;
+                let totalBase = 0;
+                let totalCashUsed = 0;
+                let totalCashAvailable = 0;
+                let lastPriceUsed = null;
+                const fills = [];
+
+                for (const [price, volume] of levels) {
+                    const levelCash = price * volume;
+                    totalCashAvailable += levelCash;
+
+                    if (remaining <= 0) continue;
+
+                    const thisCash = Math.min(levelCash, remaining);
+                    const thisBase = thisCash / price;
+
+                    fills.push({
+                        price,
+                        bookVolume: volume,
+                        takenBase: thisBase,
+                        takenCash: thisCash
+                    });
+
+                    remaining -= thisCash;
+                    totalCashUsed += thisCash;
+                    totalBase += thisBase;
+                    lastPriceUsed = price;
+
+                    if (remaining <= 1e-8) break;
+                }
+
+                if (totalBase <= 0) return undefined;
+
+                const avg = totalCashUsed / totalBase;
+                const result = [avg, lastPriceUsed ?? 0, totalCashAvailable];
+                result.fills = fills;
+                result.totalCashUsed = totalCashUsed;
+                result.totalBaseFilled = totalBase;
+                result.fullyFilled = remaining <= 1e-6;
+                return result;
+            }
+
+            function connect(pair) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close(1000, "reconnect");
+                } else if (ws && ws.readyState === WebSocket.CONNECTING) {
+                    ws.close(1000, "reconnect");
+                }
+
+                currentPair = pair;
+                state.bids = [];
+                state.asks = [];
+                state.lastUpdateTime = null;
+                lastTradeComputation = null;
+                renderOrderBook();
+
+                els.pairLabel.textContent = currentPair;
+                els.lastUpdate.textContent = "Connecting…";
+
+                isConnecting = true;
+                setStatus("connecting", "Connecting", "Opening WebSocket to Gate.io…");
+
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = () => {
+                    isConnecting = false;
+                    setStatus("connected", "Connected", "Streaming: " + currentPair);
+
+                    const msg = {
+                        time: Math.floor(Date.now() / 1000),
+                        channel: CHANNEL,
+                        event: "subscribe",
+                        payload: [currentPair, LEVEL, INTERVAL]
+                    };
+
+                    try {
+                        ws.send(JSON.stringify(msg));
+                    } catch (err) {
+                        console.error("WebSocket send error:", err);
+                        setStatus("error", "Send error", String(err));
+                    }
+                };
+
+                ws.onclose = (ev) => {
+                    const reason = ev.reason || "Connection closed";
+                    if (isConnecting) {
+                        setStatus("error", "Failed", "Could not open connection.");
+                    } else {
+                        setStatus("disconnected", "Disconnected", reason);
+                    }
+                    isConnecting = false;
+                };
+
+                ws.onerror = (err) => {
+                    console.error("WebSocket error:", err);
+                    setStatus("error", "Error", "Check console for details.");
+                };
+
+                ws.onmessage = (ev) => {
+                    let msg;
+                    try {
+                        msg = JSON.parse(ev.data);
+                    } catch (e) {
+                        console.warn("Invalid JSON:", ev.data);
+                        return;
+                    }
+
+                    if (msg.error) {
+                        console.error("Gate.io error:", msg.error);
+                        setStatus("error", "API error", msg.error.message || "Unknown error");
+                        return;
+                    }
+
+                    if (msg.event === "subscribe" && msg.channel === CHANNEL) {
+                        // Subscription ACK
+                        return;
+                    }
+
+                    if (msg.channel === CHANNEL && msg.event === "update" && msg.result) {
+                        const res = msg.result;
+                        if (!res.s || res.s !== currentPair) return;
+
+                        updateLocalOrderBookFromSnapshot(res);
+                    }
+                };
+            }
+
+            // For `spot.order_book` each update is a full top-of-book snapshot.
+            function updateLocalOrderBookFromSnapshot(result) {
+                const t = result.t;
+                state.lastUpdateTime = t || Date.now();
+
+                const bidsRaw = Array.isArray(result.bids) ? result.bids : [];
+                const asksRaw = Array.isArray(result.asks) ? result.asks : [];
+
+                const bids = [];
+                const asks = [];
+
+                for (let i = 0; i < bidsRaw.length && i < LEVEL; i++) {
+                    const [pStr, aStr] = bidsRaw[i];
+                    const price = parseFloat(pStr);
+                    const amount = parseFloat(aStr);
+                    if (!isFinite(price) || !isFinite(amount) || amount <= 0) continue;
+                    bids.push({ price, amount });
+                }
+
+                for (let i = 0; i < asksRaw.length && i < LEVEL; i++) {
+                    const [pStr, aStr] = asksRaw[i];
+                    const price = parseFloat(pStr);
+                    const amount = parseFloat(aStr);
+                    if (!isFinite(price) || !isFinite(amount) || amount <= 0) continue;
+                    asks.push({ price, amount });
+                }
+
+                // Ensure sort: bids high->low, asks low->high
+                bids.sort((a, b) => b.price - a.price);
+                asks.sort((a, b) => a.price - b.price);
+
+                // Compute cumulative totals
+                let cumBidCash = 0;
+                for (const row of bids) {
+                    cumBidCash += row.price * row.amount;
+                    row.cumulativeCash = cumBidCash;
+                }
+
+                let cumAskCash = 0;
+                for (const row of asks) {
+                    cumAskCash += row.price * row.amount;
+                    row.cumulativeCash = cumAskCash;
+                }
+
+                state.bids = bids;
+                state.asks = asks;
+
+                renderOrderBook();
+            }
+
+            function computeTradePreview() {
+                lastTradeComputation = null;
+                const cashVol = tradeSettings.cash;
+                const side = tradeSettings.side;
+
+                if (
+                    !cashVol ||
+                    !isFinite(cashVol) ||
+                    cashVol <= 0 ||
+                    (side !== "buy" && side !== "sell")
+                ) {
+                    return;
+                }
+
+                const levels = side === "buy" ? state.asks : state.bids;
+                if (!levels || !levels.length) return;
+
+                const sortDir = side === "buy" ? "asc" : "desc";
+                const arr = levels.map((l) => [l.price, l.amount]);
+                const res = avgPrice(arr, sortDir, cashVol);
+
+                if (!res) return;
+
+                const fillsByPrice = new Map();
+                (res.fills || []).forEach((f) => {
+                    fillsByPrice.set(f.price, f);
+                });
+
+                lastTradeComputation = {
+                    side,
+                    cash: cashVol,
+                    result: res,
+                    fillsByPrice
+                };
+            }
+
+            function renderOrderBook() {
+                const asksBody = els.asksBody;
+                const bidsBody = els.bidsBody;
+
+                asksBody.innerHTML = "";
+                bidsBody.innerHTML = "";
+
+                // First compute trade preview from the latest book & user inputs
+                computeTradePreview();
+
+                const asks = state.asks.slice(0, DISPLAY_ROWS);
+                const bids = state.bids.slice(0, DISPLAY_ROWS);
+
+                const maxAskAmount = asks.reduce(
+                    (m, r) => (r.amount > m ? r.amount : m),
+                    0
+                );
+                const maxBidAmount = bids.reduce(
+                    (m, r) => (r.amount > m ? r.amount : m),
+                    0
+                );
+
+                const tradeOnAsks =
+                    lastTradeComputation && lastTradeComputation.side === "buy";
+                const tradeOnBids =
+                    lastTradeComputation && lastTradeComputation.side === "sell";
+
+                // Asks (render from worst to best so best is closest to center)
+                for (let i = asks.length - 1; i >= 0; i--) {
+                    const row = asks[i];
+                    const fill =
+                        tradeOnAsks && lastTradeComputation.fillsByPrice.get(row.price);
+
+                    const rowEl = document.createElement("div");
+                    rowEl.className = "ob-row ob-row--asks" + (fill ? " ob-row--fill" : "");
+
+                    const bar = document.createElement("div");
+                    bar.className = "ob-row-bar ob-row-bar--asks";
+                    const width =
+                        maxAskAmount > 0 ? (row.amount / maxAskAmount) * 100 : 0;
+                    bar.style.width = width.toFixed(2) + "%";
+                    rowEl.appendChild(bar);
+
+                    if (fill && fill.takenBase > 0 && row.amount > 0) {
+                        const fillBar = document.createElement("div");
+                        fillBar.className = "ob-row-fill-bar ob-row-fill-bar--asks";
+                        const frac = Math.min(fill.takenBase / row.amount, 1);
+                        fillBar.style.width = (frac * 100).toFixed(2) + "%";
+                        rowEl.appendChild(fillBar);
+                    }
+
+                    const priceEl = document.createElement("span");
+                    priceEl.className = "ob-cell ob-cell--price";
+                    priceEl.textContent = formatPrice(row.price);
+
+                    const sizeEl = document.createElement("span");
+                    sizeEl.className = "ob-cell ob-cell--size";
+                    if (fill && fill.takenBase > 0) {
+                        sizeEl.innerHTML =
+                            formatAmount(row.amount) +
+                            '<span class="take-indicator">takes ' +
+                            formatAmount(fill.takenBase) +
+                            "</span>";
+                    } else {
+                        sizeEl.textContent = formatAmount(row.amount);
+                    }
+                    const totalEl = document.createElement("span");
+                    totalEl.className = "ob-cell ob-cell--total";
+                    totalEl.textContent = formatAmount(row.cumulativeCash);
+
+                    rowEl.appendChild(priceEl);
+                    rowEl.appendChild(sizeEl);
+                    rowEl.appendChild(totalEl);
+
+                    asksBody.appendChild(rowEl);
+                }
+
+                // Bids
+                for (let i = 0; i < bids.length; i++) {
+                    const row = bids[i];
+                    const fill =
+                        tradeOnBids && lastTradeComputation.fillsByPrice.get(row.price);
+
+                    const rowEl = document.createElement("div");
+                    rowEl.className = "ob-row ob-row--bids" + (fill ? " ob-row--fill" : "");
+
+                    const bar = document.createElement("div");
+                    bar.className = "ob-row-bar ob-row-bar--bids";
+                    const width =
+                        maxBidAmount > 0 ? (row.amount / maxBidAmount) * 100 : 0;
+                    bar.style.width = width.toFixed(2) + "%";
+                    rowEl.appendChild(bar);
+
+                    if (fill && fill.takenBase > 0 && row.amount > 0) {
+                        const fillBar = document.createElement("div");
+                        fillBar.className = "ob-row-fill-bar ob-row-fill-bar--bids";
+                        const frac = Math.min(fill.takenBase / row.amount, 1);
+                        fillBar.style.width = (frac * 100).toFixed(2) + "%";
+                        rowEl.appendChild(fillBar);
+                    }
+
+                    const priceEl = document.createElement("span");
+                    priceEl.className = "ob-cell ob-cell--price";
+                    priceEl.textContent = formatPrice(row.price);
+
+                    const sizeEl = document.createElement("span");
+                    sizeEl.className = "ob-cell ob-cell--size";
+                    if (fill && fill.takenBase > 0) {
+                        sizeEl.innerHTML =
+                            formatAmount(row.amount) +
+                            '<span class="take-indicator">takes ' +
+                            formatAmount(fill.takenBase) +
+                            "</span>";
+                    } else {
+                        sizeEl.textContent = formatAmount(row.amount);
+                    }
+
+                    const totalEl = document.createElement("span");
+                    totalEl.className = "ob-cell ob-cell--total";
+                    totalEl.textContent = formatAmount(row.cumulativeCash);
+
+                    rowEl.appendChild(priceEl);
+                    rowEl.appendChild(sizeEl);
+                    rowEl.appendChild(totalEl);
+
+                    bidsBody.appendChild(rowEl);
+                }
+
+                // Spread and last update
+                if (state.bids.length && state.asks.length) {
+                    const bestBid = state.bids[0].price;
+                    const bestAsk = state.asks[0].price;
+                    const spreadAbs = bestAsk - bestBid;
+                    const mid = (bestAsk + bestBid) / 2;
+                    const spreadPct = mid > 0 ? (spreadAbs / mid) * 100 : 0;
+
+                    els.spread.innerHTML =
+                        'Spread: <strong>' +
+                        formatPrice(spreadAbs) +
+                        "</strong> (" +
+                        spreadPct.toFixed(3) +
+                        "%)";
+                } else {
+                    els.spread.innerHTML = "Spread: <strong>—</strong>";
+                }
+
+                if (state.lastUpdateTime) {
+                    els.lastUpdate.textContent =
+                        "Last update: " + formatTime(state.lastUpdateTime);
+                } else {
+                    els.lastUpdate.textContent = "Waiting for data…";
+                }
+
+                // Trade summary UI
+                if (!els.tradeSummary) return;
+
+                if (!lastTradeComputation || !lastTradeComputation.result) {
+                    els.tradeSummary.innerHTML =
+                        '<div class="trade-summary-line">Set side &amp; cash volume to preview a market order using the live book.</div>';
+                } else {
+                    const sideLabel =
+                        lastTradeComputation.side === "buy" ? "Buy" : "Sell";
+                    const res = lastTradeComputation.result;
+                    const avgP = res[0];
+                    const filledBase = res.totalBaseFilled || 0;
+                    const totalCashUsed = res.totalCashUsed || 0;
+                    const fully = res.fullyFilled;
+
+                    let html =
+                        '<div class="trade-summary-line">Est. ' +
+                        sideLabel +
+                        " " +
+                        formatAmount(filledBase) +
+                        " @ avg <strong>" +
+                        formatPrice(avgP) +
+                        "</strong> (cash used: " +
+                        formatAmount(totalCashUsed) +
+                        ")</div>";
+
+                    if (!fully) {
+                        html +=
+                            '<div class="trade-summary-line warning">Book depth is insufficient to fully fill ' +
+                            formatAmount(tradeSettings.cash) +
+                            " cash. Showing partial fill.</div>";
+                    }
+
+                    els.tradeSummary.innerHTML = html;
+                }
+            }
+
+            function normalizePairInput(value) {
+                let v = (value || "").trim().toUpperCase();
+                if (!v) return null;
+                // If user types e.g. BTCUSDT, try to convert to BTC_USDT (simple heuristic)
+                if (!v.includes("_") && v.endsWith("USDT")) {
+                    const base = v.slice(0, -4);
+                    v = base + "_USDT";
+                }
+                return v;
+            }
+
+            function handleConnect(ev) {
+                ev.preventDefault();
+                const raw = els.pairInput.value || currentPair;
+                const pair = normalizePairInput(raw);
+                if (!pair) {
+                    setStatus("error", "Invalid pair", "Please type a pair, e.g. BTC_USDT.");
+                    return;
+                }
+                els.pairInput.value = pair;
+                connect(pair);
+            }
+
+            function handleTradeInputChange() {
+                const sideVal = (els.sideInput.value || "buy").toLowerCase();
+                tradeSettings.side = sideVal === "sell" ? "sell" : "buy";
+
+                const vol = parseFloat(els.volumeInput.value);
+                tradeSettings.cash = isFinite(vol) && vol > 0 ? vol : 0;
+
+                renderOrderBook();
+            }
+
+            // Set defaults and attach handlers
+            function init() {
+                els.pairInput.value = currentPair;
+                els.pairForm.addEventListener("submit", handleConnect);
+
+                els.sideInput.value = tradeSettings.side;
+                els.volumeInput.value = "";
+                els.sideInput.addEventListener("change", handleTradeInputChange);
+                els.volumeInput.addEventListener("input", handleTradeInputChange);
+
+                // Auto-connect to default pair
+                connect(currentPair);
+            }
+
+            init();
+        })();
+    </script>
+</body>
+
+</html>

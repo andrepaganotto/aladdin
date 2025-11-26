@@ -34,7 +34,7 @@ export function findProperty(buffer, index, needle) {
  */
 export const avgPrice = (arr, sort = 'asc', vol) => {
     if (sort === 'asc') arr = [...arr.entries()].sort(([a], [b]) => a - b);
-    if (sort === 'desc') arr = [...arr.entries()].sort(([a], [b]) => b - b);
+    if (sort === 'desc') arr = [...arr.entries()].sort(([a], [b]) => b - a);
 
     let initVol = vol
     let sum = 0;
