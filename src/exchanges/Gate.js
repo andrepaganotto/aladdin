@@ -15,7 +15,8 @@ async function fetchSymbols(refresh = false) {
         const list = req.data;
         if (!list || !list.length) throw new Error(`No data from request: ${list}`);
 
-        symbols.spot = Object.fromEntries(list.filter(s => s.quote === 'USDT' && s.trade_status === 'tradable' && !s.delisting_time).map(s => [s.base, s.id]));
+        //We remove xStock cryptos because they cant be traded in Brazilian accounts, and since they are not on spot, they wont be in futures
+        symbols.spot = Object.fromEntries(list.filter(s => s.quote === 'USDT' && s.trade_status === 'tradable' && !s.delisting_time && !s.base_name.includes('xStock')).map(s => [s.base, s.id]));
         symbols.spotDelisting = Object.fromEntries(list.filter(s => s.quote === 'USDT' && s.delisting_time).map(s => [s.base, new Date(s.delisting_time * 1000).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })]));
     }
     catch (error) {
